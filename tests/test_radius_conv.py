@@ -1,5 +1,6 @@
 from tidef.phase_curve import deformed_PC, convert_radius
 import numpy as np
+import pytest
 
 def test_convert_radius():
     # Test conversion from spherical to deformed radius
