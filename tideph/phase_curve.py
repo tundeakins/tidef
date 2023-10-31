@@ -276,7 +276,7 @@ class deformed_PC:
 
         denom      = pars["aR"]*ecc_fac*sini
 
-        tdur       = (pars["P"]/np.pi) * (ecc_fac**2/np.sqrt(1-pars["e"]**2)) * (np.arcsin( np.sqrt(1+pars["Rv"]**2 - (pars["aR"]*ecc_fac*cosi)**2 )/denom ))
+        tdur       =  (pars["P"]/np.pi) * (ecc_fac**2/np.sqrt(1-pars["e"]**2)) * (np.arcsin( np.sqrt(1+pars["Rv"]**2 - (pars["aR"]*ecc_fac*cosi)**2 )/denom ))
         return tdur
 
     def _phase_fold(self, t, pars):
