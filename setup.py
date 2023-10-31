@@ -1,18 +1,18 @@
 import setuptools
 import os, glob
-from tideph.__version__ import __version__
+from tidef.__version__ import __version__
 
 here = os.path.abspath(os.path.dirname(__file__))
 
 setuptools.setup(
-    name="tideph", # Replace with your own username
+    name="tidef", # Replace with your own username
     version=__version__,
     author="Babatunde Akinsanmi",
     author_email="tunde.akinsanmi@unige.ch",
     description="Package to model the phase curve of tidally deformed planets",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/tundeakins/tideph",
+    url="https://github.com/tundeakins/tidef",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python",
