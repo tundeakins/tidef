@@ -1,7 +1,7 @@
 import ellc
 import batman
 import numpy as np
-
+from matplotlib import pyplot as plt
   
 def convert_radius(R_pl, hf, qmass, inc, aR, u1=0, u2=0, conv = "Rp2Rv", plot=False):
     """
