@@ -1,12 +1,12 @@
 import setuptools
 import os, glob
-# from tidef.__version__ import __version__
+from tidef.__version__ import __version__
 
 here = os.path.abspath(os.path.dirname(__file__))
 
 setuptools.setup(
     name="tidef", # Replace with your own username
-    version='0.0.2',
+    version=__version__,
     author="Babatunde Akinsanmi",
     author_email="tunde.akinsanmi@unige.ch",
     description="Package to model the phase curve of tidally deformed planets",
