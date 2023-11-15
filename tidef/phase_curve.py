@@ -2,87 +2,19 @@ import ellc
 import batman
 import numpy as np
 from matplotlib import pyplot as plt
-  
-def convert_radius(R_pl, hf, qmass, inc, aR, u1=0, u2=0, conv = "Rp2Rv", plot=False):
-    """
-        convert between spherical planet radius Rp and ellipsodial volumetric radius Rv.
-        This is done by finding the best fit Rp (or Rv) to the simulated deformed (or spherical) planet light + \
-        curve with other parameters kept the same. 
-
-        Parameters:
-        -----------
-        R_pl: radius of planet to convert (units of stellar radii)
-        hf  : Love number of the deformed planet
-        qmass: Mass ratio Mp/Mstar
-        inc: inclination in degrees
-        aR : scale semi-major axis a/Rstar
-        u1,u2: (optional) quadratic limb darkening parameters
-        conv : required radius conversion. "Rp2Rv" to convert from spherical to deformed and "Rv2Rp" for the reverse.
-        plot : bool, True to plot fit.  
-
-        Returns:
-        ---------
-        R_fit: best fit radius (of deformed or spherical planet) that produces similar depth as the inputted planet radius
-
-    """
-    import ellc
-    r_1 = 1./aR            #Rst/a
-    r_2 = R_pl/aR            # Rp/a
-    b = aR*np.cos(np.deg2rad(inc))
-    tdur = np.arcsin(r_1*np.sqrt( ((1+r_2)**2-b**2) / (1-b**2*r_1**2) ))/np.pi
-    ph =  np.linspace(-tdur, tdur,500)
-    
-    assert conv in ["Rp2Rv", "Rv2Rp"],f'conv must be one of ["Rp2Rv", "Rv2Rp"] but {conv} given'
-    pl_shape = "sphere" if conv=="Rp2Rv" else "love"
-    
-    def model(R_pl,pl_shape=pl_shape,data=None):
-    
-        ellc_flux = ellc.lc(ph, t_zero=0, radius_1=r_1,radius_2=R_pl*r_1,
-                            incl=inc, sbratio=0,
-                            ld_1="quad", ldc_1=[u1,u2], 
-                            shape_2=pl_shape, q=qmass, hf_2=hf)
-        
-        if data is None:
-            return ellc_flux
-        return np.sum((data - ellc_flux)**2)
-    
-    flux_sim = model(R_pl,pl_shape)
-    rprint = "Rp" if pl_shape=="sphere" else "Rv"
-    
-    if plot: 
-        fig,ax = plt.subplots(2,1, figsize=(7,5), gridspec_kw={"height_ratios":(3,1)}, sharex=True)
-        ax[0].plot(ph, flux_sim, "b",lw=3,label=f"sim – {pl_shape} ({rprint} = {R_pl:.4f})")
-    
-    #fit simulated light curve
-    from scipy.optimize import minimize_scalar, differential_evolution
-    fit_shape = "love" if pl_shape=="sphere" else "sphere"
-    
-    res =  minimize_scalar(model,(0.8*R_pl, R_pl, 1.2*R_pl),args=(fit_shape,flux_sim))
-    R_fit = res.x
-    
-    flux_fit = model(R_fit,fit_shape)
-    rprint = "Rp" if fit_shape=="sphere" else "Rv"
-    
-    if plot:
-        ax[0].plot(ph, flux_fit,"r--", lw=2, label = f"fit – {fit_shape} ({rprint} = {R_fit:.4f})"); ax[0].legend()
-        ax[0].set_ylabel("Flux")
-        ax[1].plot(ph, 1e6*(flux_sim-flux_fit))
-        ax[1].set_xlabel("Phase")
-        ax[1].set_ylabel("res [ppm]")
-        plt.subplots_adjust(hspace=0.01)
-        
-    return R_fit
+from .utils import transit_duration,phase_fold
 
 
 class deformed_PC:
-    def __init__(self, deformed=True, ld_law="power-2", planet_variation="cosine", ellc_grid="default"):
+    def __init__(self, deformed=True, ld_law="power-2", planet_variation="cosine", custom_planet_variation_params=None, ellc_grid="default"):
         """
         Initializes a deformed planet object with optional ellipsoidal variation and Doppler beaming signals.
 
         Args:
         - deformed (bool): If True, the planet is assumed to be deformed.
         - ld_law (str): The limb darkening law to use. Can be "power-2" or "quad".
-        - planet_variation (str): The type of planet variation to use. Can be "cosine" or a function. #TODO add more options like spiderman model
+        - planet_variation (str): The type of planet variation to use. Can be "cosine" or a custom function. #TODO add more options like spiderman model
+        - custom_planet_variation_params (dict): A dictionary of parameters for the custom planet variation function. Only used if planet_variation is a custom function.
         - ellc_grid (str): The grid resolution to use for ellc. Can be "default", "sparse", or "fine".
         
         Returns:
@@ -107,10 +39,13 @@ class deformed_PC:
         Returns:
         - pars (dict): A dictionary of default parameters for the planet.
         """
-        pars = {"t0":0, "P":1, "Rv":0.1, "aR":3, "inc":90, "e":0, "w":90, "ld_pars":[0.5,0.5],"qmass":0.00098, "Fp":1000, "Fn":200, "hf":1.5, "delta":0, "A_EV":0, "A_DB":0}
+
+        pars = {"t0":0, "P":1, "Rv":0.1, "aR":3, "inc":90, "e":0, "w":90, "ld_pars":[0.5,0.5],"qmass":1, "Fp":0, "Fn":0, "hf":1.5, "delta":0, "A_EV":0, "A_DB":0}
         if not self.deformed: 
             pars["qmass"] = 1
             pars["hf"] = 0
+
+        #TODO: find a way to specify which parameters to vary and which to keep fixed
         return pars
 
     def planet_cosine_variation(self,t, pars):
@@ -125,14 +60,31 @@ class deformed_PC:
         - delta (array): An array of the cosine function values for the planet's atmospheric phase variation.
         """
 
-        delta_rad = np.deg2rad(pars["delta"])   #phase-offset
+        delta_rad  = np.deg2rad(pars["delta"])   #phase-offset
         atm_signal =  (pars["Fp"]-pars["Fn"]) * (1- np.cos( self.phi + delta_rad))/2 + pars["Fn"]
         return atm_signal*self.ppm
-
-
-    def projected_planet_area(self,pars,return_axis=False):
+    
+    def planet_lambertian_variation(self,t, pars):
         """
-        Calculates the projected area of the ellipsoidal planet as a function of phase.
+        Calculates the Lambertian function for the planet's atmospheric phase variation.
+
+        Args:
+        - t (array): An array of times at which to calculate the Lambertian function.
+        - pars (dict): A dictionary of parameters for the planet.
+        
+        Returns:
+        - delta (array): An array of the Lambertian function values for the planet's atmospheric phase variation.
+        """
+
+        delta_rad  = np.deg2rad(pars["delta"])
+        NotImplementedError("Lambertian variation not yet implemented")
+        return atm_signal*self.ppm
+        
+
+
+    def projected_planet_area(self,pars,phase=None,return_axis=False):
+        """
+        Calculates the projected area of the ellipsoidal planet as a function of phase. From  eqn B.9 of leconte 2011(http://www.aanda.org/10.1051/0004-6361/201015811e)
 
         Args:
         - pars (dict): A dictionary containing the following keys:
@@ -144,7 +96,7 @@ class deformed_PC:
         - return_axis (bool): If True, returns the semi-major, semi-minor, and semi-intermediate axes of the ellipsoid.
 
         Returns:
-        - L (float): The projected area of the ellipsoidal planet as a function of phase.
+        - L (float): The projected area of the ellipsoidal planet as a function of phase for hf=0, L is constant with phase.
         - abc (tuple): A tuple containing the semi-major, semi-minor, and semi-intermediate axes of the ellipsoid. Only returned if `return_axis` is True.
         """
         qr = 0.5*pars["hf"]*1/pars["qmass"]*(pars["Rv"]/pars["aR"])**3
@@ -153,10 +105,12 @@ class deformed_PC:
         cx = bx*(1.-qr)
         abc=np.array([ax,bx,cx])
 
+        phi = self.phi if hasattr(self,'phi') else 2*np.pi*phase 
+
         a1,a2,a3 = abc
         d2r = np.deg2rad
-        cosphi = np.cos(self.phi)
-        sinphi = np.sin(self.phi)
+        cosphi = np.cos(phi)
+        sinphi = np.sin(phi)
         sininc = np.sin(d2r(pars["inc"]))
         cosinc = np.cos(d2r(pars["inc"]))
         L = np.pi*np.sqrt(a3**2*sininc**2*(a1**2*sinphi**2+a2**2*cosphi**2) + a1**2*a2**2*cosinc**2)
@@ -169,8 +123,7 @@ class deformed_PC:
 
         Args:
         t (float): The time at which to calculate the signal.
-        pars (dict): A dictionary containing the parameters (pars["A_EV"])needed to calculate the signal.
-
+        pars (dict): A dictionary containing the EV semi-amplitude (pars["A_EV"]) in ppm
         Returns:
         float: The calculated ellipsoidal variation signal, in parts per million (ppm).
         """
@@ -226,10 +179,9 @@ class deformed_PC:
         array-like: Eclipse signal rescaled to 0-1.
         """
         params = self._PCpars_to_batman(pars)
-        m1 = batman.TransitModel(params, t)    #initializes model
-        params.t_secondary = m1.get_t_secondary(params)
+        # m1 = batman.TransitModel(params, t)    #initializes model
+        # params.t_secondary = m1.get_t_secondary(params)
         m2 = batman.TransitModel(params, t, transittype="secondary")
-        # print("tsec3", m2.get_t_secondary(params))
         ecl_signal = self._rescale(m2.light_curve(params)) #ECLIPSE rescaled to 0-1
         return ecl_signal
 
@@ -254,35 +206,6 @@ class deformed_PC:
         params.t_secondary = params.t0 + 0.5*params.per*(1+4/np.pi*params.ecc * np.cos(np.deg2rad(params.w)))   #time of secondary eclipse 
 
         return params
-
-
-
-    def _inclination(self,pars):
-        #inclination of the orbit 
-        ecc_fac = (1-pars["e"]**2)/(1 + pars["e"]*np.sin(np.deg2rad(pars["w"])))
-        return np.arccos(pars["b"]/(pars["aR"]*ecc_fac)) * 180/np.pi
-
-    def _impact_parameter(self,pars):
-        #impact parameter
-        ecc_fac = (1-pars["e"]**2)/(1 + pars["e"]*np.sin(np.deg2rad(pars["w"])))
-        return pars["aR"]*np.cos(np.deg2rad(pars["inc"]))*ecc_fac
-
-    def _transit_duration(self,pars):
-        #transit duration  in same units as pars["P"]
-        #eqn 30 and 31 of Kipping 2010 https://doi.org/10.1111/j.1365-2966.2010.16894.x
-        ecc_fac = (1-pars["e"]**2)/(1 + pars["e"]*np.sin(np.deg2rad(pars["w"])))
-        sini       = np.sin(np.deg2rad(pars["inc"]))
-        cosi       = np.cos(np.deg2rad(pars["inc"]))
-
-        denom      = pars["aR"]*ecc_fac*sini
-
-        tdur       =  (pars["P"]/np.pi) * (ecc_fac**2/np.sqrt(1-pars["e"]**2)) * (np.arcsin( np.sqrt(1+pars["Rv"]**2 - (pars["aR"]*ecc_fac*cosi)**2 )/denom ))
-        return tdur
-
-    def _phase_fold(self, t, pars):
-        #phase folding
-        phase = (t-pars["t0"])/pars["P"] % 1
-        return phase   
     
 
     def phase_curve(self, t, pars, return_components=False):
@@ -297,11 +220,10 @@ class deformed_PC:
             Returns:
                 array-like: Array of phase curve values.
             """
-            _pars = self.pars.copy()
-            _pars.update(pars)
-            self.phase = self._phase_fold(t,pars)
+
+            self.phase = phase_fold(t,pars)
             phi      = 2*np.pi*self.phase
-            self.phi = phi   
+            self.phi = phi 
 
             trans_signal     = self.transit_signal(t, pars)
             ecl_signal       = self.eclipse_signal(t, pars)
@@ -309,7 +231,7 @@ class deformed_PC:
             ellip_signal     = self.ellipsoidal_variation(t, pars)
             DB_signal        = self.doppler_beaming(t, pars)
 
-            ellipsoidal_area = self.projected_planet_area(pars)
+            ellipsoidal_area = self.projected_planet_area(pars) if self.deformed else np.ones_like(self.phase)
             normalized_area  = ellipsoidal_area/ellipsoidal_area.min()
 
             if return_components:
@@ -317,7 +239,7 @@ class deformed_PC:
                 pc_def_contrib = def_atm_signal - atm_signal
                 return def_atm_signal, ellip_signal, DB_signal, pc_def_contrib
 
-            tdur  = self._transit_duration(pars)/pars["P"]
+            tdur  = transit_duration(pars)/pars["P"]
             tmask = np.abs(self.phase) <= tdur/2
             normalized_area[tmask] = 1
 
