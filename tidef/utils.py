@@ -82,10 +82,11 @@ def transit_duration(pars):
 
     denom      = pars["aR"]*ecc_fac*sini
 
-    tdur       =  (pars["P"]/np.pi) * (ecc_fac**2/np.sqrt(1-pars["e"]**2)) * (np.arcsin( np.sqrt(1+pars["Rv"]**2 - (pars["aR"]*ecc_fac*cosi)**2 )/denom ))
+    tdur       =  (pars["P"]/np.pi) * (ecc_fac**2/np.sqrt(1-pars["e"]**2)) * (np.arcsin( np.sqrt((1+pars["Rv"])**2 - (pars["aR"]*ecc_fac*cosi)**2 )/denom ))
     return tdur
 
-def phase_fold(t, pars):
+
+def phase_fold(t, pars,phase0=-0.25):
     """
     Phase folds a given time series using the provided parameters.
 
@@ -96,7 +97,9 @@ def phase_fold(t, pars):
     Returns:
     array-like: The phase folded time series.
     """
-    phase = (t-pars["t0"])/pars["P"] % 1    
+    # phase = (t-pars["t0"])/pars["P"] % 1 
+
+    phase = ( ( ( (t-pars["t0"])/pars["P"] % 1) - phase0) % 1) + phase0
     return phase
 
 

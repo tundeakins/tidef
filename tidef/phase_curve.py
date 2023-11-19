@@ -78,7 +78,7 @@ class deformed_PC:
 
         delta_rad  = np.deg2rad(pars["delta"])
         NotImplementedError("Lambertian variation not yet implemented")
-        return atm_signal*self.ppm
+        # return atm_signal*self.ppm
         
 
 
@@ -152,8 +152,11 @@ class deformed_PC:
             array-like: Array of transit signal values.
         """
         if self.deformed:
-            fc = np.sqrt(pars["e"])*np.cos(np.deg2rad(pars["w"]))
-            fs = np.sqrt(pars["e"])*np.sin(np.deg2rad(pars["w"]))
+            if pars["e"] == 0:
+                fc = fs = None
+            else:
+                fc = np.sqrt(pars["e"])*np.cos(np.deg2rad(pars["w"]))
+                fs = np.sqrt(pars["e"])*np.sin(np.deg2rad(pars["w"]))
             # print("using ellc for ellipsoidal planet transit")
             trans_signal =  ellc.lc(t, t_zero=pars["t0"], period=pars["P"], radius_1=1/pars["aR"],
                                 radius_2=pars["Rv"]/pars["aR"], incl=pars["inc"],  sbratio=0, f_c =fc, f_s=fs,
@@ -203,7 +206,7 @@ class deformed_PC:
         params.limb_dark   = "power2" if self.LDC_model ==  "power-2" else "quadratic"  if self.LDC_model=="quad" else self.LDC_model     #limb darkening model
         params.u           = pars["ld_pars"]          #limb darkening coefficients [u1, u2, u3, u4]
         params.fp          = pars["Fp"] *self.ppm               #planet flux
-        params.t_secondary = params.t0 + 0.5*params.per*(1+4/np.pi*params.ecc * np.cos(np.deg2rad(params.w)))   #time of secondary eclipse 
+        params.t_secondary = params.t0 + 0.5*params.per*(1+4/np.pi*params.ecc * np.cos(np.deg2rad(params.w)))   #time of secondary eclipse (eqn 33 Winn 2010- https://arxiv.org/pdf/1001.2010)
 
         return params
     
@@ -239,7 +242,8 @@ class deformed_PC:
                 pc_def_contrib = def_atm_signal - atm_signal
                 return def_atm_signal, ellip_signal, DB_signal, pc_def_contrib
 
-            tdur  = transit_duration(pars)/pars["P"]
+            #remove tidal deformation effect during transit since already accounted for in ellc transit model
+            tdur  = transit_duration(pars)/pars["P"]   #in phase units
             tmask = np.abs(self.phase) <= tdur/2
             normalized_area[tmask] = 1
 
